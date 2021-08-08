@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: cloudformation template for a cloud based monitering architecture 
+Resources:
+  # creating an S3 bucket for storing data with deletion policy as retain which keeps date post deletion of bucket  
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: DOC-EXAMPLE-BUCKET
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: monitoring-logs  
+# a logging bucket has been crated to get the logs         
+  LoggingBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      AccessControl: LogDeliveryWrite   
+  # creating a kinesis firehose for getting inputs from the CI engine
+  deliverystream:
+    DependsOn:
+      - deliveryPolicy
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !Join 
+          - ''
+          - - 'arn:aws:s3:::'
+            - !Ref s3bucket
+        BufferingHints:
+          IntervalInSeconds: '60'
+          SizeInMBs: '50'
+        CompressionFormat: UNCOMPRESSED
+        Prefix: firehose/
+        RoleARN: !GetAtt deliveryRole.Arn
+        ProcessingConfiguration:
+          Enabled: 'true'
+          Processors:
+            - Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !GetAtt myLambda.Arn 
+              Type: Lambda 
+  # a delivery policy which is accessed in fireshoe to handle date to the S3 bucket            
+  deliveryPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: firehose_delivery_policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 's3:AbortMultipartUpload'
+              - 's3:GetBucketLocation'
+              - 's3:GetObject'
+              - 's3:ListBucket'
+              - 's3:ListBucketMultipartUploads'
+              - 's3:PutObject'
+              
+Outputs:
+ BucketName:
+   Value: !Ref S3Bucket
+   
